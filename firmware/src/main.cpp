@@ -1,51 +1,38 @@
-#include <math.h>
 #include <Arduino.h>
-#include <config.h>
+#include <math.h>
 #include <WiFi.h>
-#include <HTTPClient.h>
+#include <config.h> // Variáveis de ambiente
 #include <ArduinoJson.h>
-#include <NTPClient.h>
+#include <time.h>
+#include <HTTPClient.h>
 
 #define pinNTC 32
+#define pinInfravermelho 33
+#define pinLDR 34
 
-WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP, "pool.ntp.br", -10800, 60000);
+const char* ntpServer = "pool.ntp.org";
+const long  gmtOffset_sec = -10800; 
+const int   daylightOffset_sec = 0; 
 
-bool conectarWifi(){
-  WiFi.begin(WIFI_NOME, WIFI_SENHA);
-  
-  int tentativas = 0;
-  while (WiFi.status() != WL_CONNECTED && tentativas < 20) {
-    delay(500);
-    Serial.print(".");
-    tentativas++;
-  }
-  
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\nConectado com sucesso!");
-    return true;
-  } else {
-    Serial.println("\nFalha ao conectar. Continuando sem internet...");
-    return false;
-  }
-}
+double temperaturaObtidaPeloSensorNTC(){
 
-double temperaturaCaptada(int pinoNTC){
-  const double RTNOMINAL = 100000; 
-  const double TEMPNOMINAL = 25;
-  const double BCOEFFICIENT = 3950; 
-  const double RESISTORFIXO = 10000; 
+  double leituraSensorNTC = analogRead(pinNTC);
 
-  double leitura = analogRead(pinoNTC);
-  
-  if (leitura <= 0 || leitura >= 4095) {
-    Serial.println("Erro na leitura do sensor (Verifique o pino e conexões)");
+  const double RTNOMINAL = 100000.0;   
+  const double TEMPNOMINAL = 25.0;
+  const double BCOEFFICIENT = 3950.0;  
+  const double RESISTORFIXO = 10000.0; 
+
+   if (leituraSensorNTC <= 10 || leituraSensorNTC >= 4085) {
+    Serial.print("Leitura ADC fora dos limites: ");
+    Serial.println(leituraSensorNTC);
     delay(1000);
-    return 0;
+    return 0.0;
   }
 
-  double resistencia = RESISTORFIXO / ((4095.0 / leitura) - 1.0);
-  
+  double resistencia = RESISTORFIXO / ((4095.0 / leituraSensorNTC) - 1.0);
+
+  // Equação de Steinhart-Hart para converter resistência em temperatura Celsius
   double temperatura;
   temperatura = resistencia / RTNOMINAL;     
   temperatura = log(temperatura);                  
@@ -53,56 +40,100 @@ double temperaturaCaptada(int pinoNTC){
   temperatura += 1.0 / (TEMPNOMINAL + 273.15); 
   temperatura = 1.0 / temperatura;                
   temperatura -= 273.15;  
+
   return temperatura;
 }
 
-void enviarDados(String json){
-  const String URL = URL_API;
-  HTTPClient http;
-  
-  http.begin(URL);
-  http.addHeader("Content-Type", "application/json");
-  
-  int httpCodigoResposta = http.POST(json);
-  
-  if (httpCodigoResposta > 0) {
-    Serial.print("Código de resposta HTTP: ");
-    Serial.println(httpCodigoResposta);
-    
-    if (httpCodigoResposta == HTTP_CODE_OK || httpCodigoResposta == 201) {
-      Serial.println("Dados enviados com sucesso!");
-    } else {
-      String payload = http.getString();
-      Serial.println("Resposta do servidor: " + payload);
-    }
-  } else {
-    Serial.print("Erro na requisição HTTP: ");
-    Serial.println(http.errorToString(httpCodigoResposta).c_str());
+bool conexaoComAInternet(){
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_NOME, WIFI_SENHA);
+  int tentativasDeConexao = 0;
+  while (WiFi.status() != WL_CONNECTED && tentativasDeConexao < 6){
+    Serial.print(".");
+    tentativasDeConexao += 1;
+    delay(1000);
   }
-  
+  if (WiFi.status() == WL_CONNECTED){
+    Serial.println("\nESP32 conectado ao WIFI.");
+    return true;
+  }
+  Serial.println("\nESP32 não conseguiu se conectar na internet.");
+  return false;
+}
+
+String horarioLocal(){
+
+  struct tm informacoesDoTempoLocal;
+  if(!getLocalTime(&informacoesDoTempoLocal)){
+    Serial.println("Falha ao obter dados do horário local.");
+    return "";
+  }
+  char buffer[50];
+  strftime(buffer, sizeof(buffer), "%H:%M:%S", &informacoesDoTempoLocal);
+  String horarioFormatado = String(buffer);
+  return horarioFormatado;
+}
+
+String jsonFormatadaParaEnvio(String nomeDoSensor, String tipoDaInformacao, double valor){
+  JsonDocument doc;
+  doc["sensor"] = nomeDoSensor;
+  doc["tipo"] = tipoDaInformacao;
+  doc["valor"] = valor;
+  doc["referencia"] = horarioLocal();
+  String jsonEstruturado;
+  serializeJson(doc, jsonEstruturado);
+  return jsonEstruturado;
+}
+
+void enviarDadosParaAPI(String json){
+  HTTPClient http;
+  http.begin(URL_API);
+  http.addHeader("Content-Type", "application/json");
+  int respostaRequisicaoHTTP = http.POST(json);
+  if (respostaRequisicaoHTTP > 0) {
+    String respostaDoServidor = http.getString();
+    Serial.print("Código HTTP: ");
+    Serial.println(respostaRequisicaoHTTP);
+    Serial.print("Resposta: ");
+    Serial.println(respostaDoServidor);
+  } else {
+    Serial.print("Erro no envio POST. Código: ");
+    Serial.println(respostaRequisicaoHTTP);
+  }
   http.end();
 }
 
-bool wifiFoiConectado = false;
-void setup() {
-  Serial.begin(115200);
-  wifiFoiConectado = conectarWifi();
-  timeClient.begin();
+double dadosColetadosPeloSensorLDR(){
+  return analogRead(pinLDR);
 }
 
+int dadosColetadosPeloSensorInfravermelho(){
+  return digitalRead(pinInfravermelho);
+}
+
+bool foiConectadoAInternet = false;
+void setup() {
+  Serial.begin(115200);
+  foiConectadoAInternet = conexaoComAInternet();
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+  pinMode(33, INPUT);
+}
+
+String json;
 void loop() {
-  if (wifiFoiConectado){
-    timeClient.update();
-    JsonDocument doc;
-    const double temperatura = temperaturaCaptada(pinNTC);
+  if (foiConectadoAInternet){
+    double temperatura = temperaturaObtidaPeloSensorNTC();
+    json = jsonFormatadaParaEnvio("NTC 10K", "temperatura", temperatura);
+    enviarDadosParaAPI(json);
 
-    doc["temperatura"] = temperatura;
-    doc["registro"] = timeClient.getFormattedTime();
+    int presenca = dadosColetadosPeloSensorInfravermelho();
+    json = jsonFormatadaParaEnvio("TCRT5000", "presenca", presenca);
+    enviarDadosParaAPI(json);
 
-    String saidaJson;
-    serializeJson(doc, saidaJson);
-    enviarDados(saidaJson);
+    double luminosidade = dadosColetadosPeloSensorLDR();
+    String json = jsonFormatadaParaEnvio("LDR", "luminosidade", luminosidade);
+    enviarDadosParaAPI(json);
   }
-  
-  delay(5000);
+
+  delay(1000); // Atualiza a cada 1 segundo
 }

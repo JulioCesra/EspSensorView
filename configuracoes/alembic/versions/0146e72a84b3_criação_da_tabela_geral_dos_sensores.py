@@ -1,8 +1,8 @@
-"""criação da tabela do sensor de temperatura
+"""criação da tabela geral dos sensores
 
-Revision ID: 56c0745a7b38
+Revision ID: 0146e72a84b3
 Revises: 
-Create Date: 2026-07-21 11:09:50.761222
+Create Date: 2026-07-26 20:07:00.492852
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '56c0745a7b38'
+revision: str = '0146e72a84b3'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -23,8 +23,10 @@ def upgrade() -> None:
     op.create_table(
         "dados_sensor",
         sa.Column("ID", sa.Integer, sa.Identity(), primary_key=True),
-        sa.Column("temperatura", sa.Double(2), nullable=False),
-        sa.Column("registro", sa.TIMESTAMP, nullable=False),
+        sa.Column("sensor", sa.String(30), nullable=False),
+        sa.Column("tipo", sa.String(60), nullable=False),
+        sa.Column("valor", sa.Double(2), nullable=False),
+        sa.Column("referencia", sa.TIMESTAMP, nullable=False),
         sa.PrimaryKeyConstraint("ID")
     );
     pass
