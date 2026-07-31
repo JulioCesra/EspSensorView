@@ -22,12 +22,12 @@ def upgrade() -> None:
     """Upgrade schema."""
     op.create_table(
         "dados_sensor",
-        sa.Column("ID", sa.Integer, sa.Identity(), primary_key=True),
+        sa.Column("id", sa.Integer, sa.Identity(), primary_key=True),
         sa.Column("sensor", sa.String(30), nullable=False),
         sa.Column("tipo", sa.String(60), nullable=False),
         sa.Column("valor", sa.Double(2), nullable=False),
         sa.Column("referencia", sa.TIMESTAMP, nullable=False),
-        sa.PrimaryKeyConstraint("ID")
+        sa.PrimaryKeyConstraint("id")
     );
     pass
 

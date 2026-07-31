@@ -1,6 +1,7 @@
 package desenvolvimento.backend.controller;
 
 import desenvolvimento.backend.model.Sensor;
+import desenvolvimento.backend.service.TabelaDadosSensoresService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -15,10 +16,17 @@ import java.util.Map;
 @Controller
 public class Sensores {
 
+    private final TabelaDadosSensoresService tabelaDadosSensoresService;
+
+    public Sensores(TabelaDadosSensoresService tabelaDadosSensoresService){
+        this.tabelaDadosSensoresService = tabelaDadosSensoresService;
+    }
+
     @PostMapping("/receberDados")
     public ResponseEntity<Map<String, String>> receberDadosDosSensores(
             @Valid @RequestBody Sensor sensor
     ){
+        tabelaDadosSensoresService.salvarDadosNoBancoDeDados(sensor);
         return ResponseEntity.status(HttpStatus.CREATED).body(
                 Map.of("resposta", "Código 201 - Os dados do sensor foram recebidos pela API!")
         );
